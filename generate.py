@@ -1,56 +1,44 @@
 #!/usr/bin/env python3
-"""
-Gemini Image Generator
-2 API keys = ~1000 images/day free
-Images saved as: 1.png, 2.png, 3.png...
-"""
-
-import google.generativeai as genai
-import base64, os, time, json
+import google.genai as genai
+import os, time, json
 from pathlib import Path
 
-# ── Config ───────────────────────────────────────────────
 KEY_ID  = int(os.environ.get("KEY_ID", "1"))
 API_KEY = os.environ.get(f"GEMINI_KEY_{KEY_ID}", "")
 
 if not API_KEY:
-    print(f"ERROR: Secret GEMINI_KEY_{KEY_ID} not set in GitHub!")
+    print(f"ERROR: Secret GEMINI_KEY_{KEY_ID} not set!")
     exit(1)
 
-# ── Load prompts.txt ─────────────────────────────────────
 src = Path("prompts.txt")
 if not src.exists():
-    print("ERROR: prompts.txt not found in repo!")
+    print("ERROR: prompts.txt not found!")
     exit(1)
 
 ALL = [l.strip() for l in src.read_text("utf-8").splitlines()
        if l.strip() and not l.startswith("#")]
 TOTAL = len(ALL)
+mine  = [(i, ALL[i]) for i in range(TOTAL) if i % 2 == (KEY_ID - 1)]
 
-# Key 1 = prompts 1,3,5,7... (index 0,2,4,6...)
-# Key 2 = prompts 2,4,6,8... (index 1,3,5,7...)
-mine = [(i, ALL[i]) for i in range(TOTAL) if i % 2 == (KEY_ID - 1)]
+print(f"Key {KEY_ID} | {len(mine)} prompts | gemini-2.0-flash-exp")
 
-print(f"Key {KEY_ID} | {len(mine)} prompts | model: gemini-2.0-flash-exp")
-
-# ── Setup ────────────────────────────────────────────────
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel("gemini-2.0-flash-exp")
+client = genai.Client(api_key=API_KEY)
 OUT = Path("output")
 OUT.mkdir(exist_ok=True)
 
-# ── Generate ─────────────────────────────────────────────
-def make(prompt, num):
+def make(prompt):
     for attempt in range(1, 4):
         try:
-            resp = model.generate_content(
+            resp = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
                 contents=prompt,
-                generation_config=genai.GenerationConfig(
+                config=genai.types.GenerateContentConfig(
                     response_modalities=["IMAGE"]
                 )
             )
             for part in resp.candidates[0].content.parts:
                 if hasattr(part, "inline_data") and part.inline_data:
+                    import base64
                     data = base64.b64decode(part.inline_data.data)
                     if len(data) > 5000:
                         return data
@@ -63,7 +51,7 @@ def make(prompt, num):
                 print(f"  bad request, skip")
                 return None
             else:
-                print(f"  error: {err[:50]}, retry {attempt}/3")
+                print(f"  error: {err[:60]}, retry {attempt}/3")
                 time.sleep(attempt * 5)
     return None
 
@@ -78,7 +66,7 @@ for idx, prompt in mine:
         continue
 
     print(f"gen {n}/{TOTAL}: {prompt[:55]}...")
-    data = make(prompt, n)
+    data = make(prompt)
 
     if data:
         path.write_bytes(data)
@@ -88,10 +76,9 @@ for idx, prompt in mine:
         print(f"  FAILED {n}.png")
         fail += 1
 
-    time.sleep(7)  # 10 RPM limit = min 6s between requests
+    time.sleep(7)
 
 print(f"\nKey {KEY_ID}: {ok} ok, {fail} failed")
 (OUT / f"report_{KEY_ID}.json").write_text(
     json.dumps({"key": KEY_ID, "ok": ok, "fail": fail})
 )
-
