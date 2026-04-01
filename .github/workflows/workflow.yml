@@ -28,8 +28,8 @@ jobs:
 
       - name: Run generator
         env:
-          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
-          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_KEY_2 }}
           MODEL_NAME: gemini-2.5-flash-image
           PROMPTS_FILE: prompts.txt
           OUT_DIR: output
